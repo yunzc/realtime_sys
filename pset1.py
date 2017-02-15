@@ -7,16 +7,22 @@ Created on Thu Feb  9 03:26:56 2017
 Problem Set 1
 """
 import math 
-import numpy as np 
+
 class Control(object):
     """
     two qunatites: forward speed and rotational speed
     """
     def __init__(self, s, omega):
         """
-        s is the forward speed (m/s)
-        omega is the rotational velocity (rad/s)
+        s is the forward speed (m/s) between 5 and 10
+        omega is the rotational velocity (rad/s) between -pi/4 and pi/4
         """
+        #test preconditions
+        if s < 5 or s > 10:  
+            raise ValueError('invalid forward speed')
+        if omega < -math.pi/4 or omega > math.pi/4:
+            raise ValueError('invalid rotational velocity')
+        #assign to class instance variables 
         self.s = s
         self.omega = omega 
     
@@ -43,41 +49,59 @@ class GroundVehicle(object):
     """
     def __init__(self, pose, s, omega):
         """
-        pose is array [x, y, theta]
+        pose is [x, y, theta]
         s is the forward speed (m/s)
         omega is the rotational velocity (rad/s)
         """
+        #test preconditions 
+        if s < 5 or s > 10:
+            raise ValueError('invalid forward speed')
+        if omega < -math.pi/4 or omega > math.pi/4:
+            raise ValueError('invalid rotational velocity')
+        for i in range(2):
+            if pose[i] < 0 or pose[i] > 100:
+                raise ValueError('invalid pose')
+        if pose[2] < -math.pi or pose[2] > math.pi: 
+            raise ValueError('invalid or un-normalized orientation')
+        #assignment to class instance variables 
         self.pose = pose
         x_dot = math.cos(pose[-1])*s #speed times the cosine of angle 
         y_dot = math.sin(pose[-1])*s
-        self.velocity = np.array([x_dot, y_dot, omega])
+        self.velocity = [x_dot, y_dot, omega]
         self.s = s
         self.omega = omega
     
     def getPosition(self):
         """
-        return and array of 3 floating point values that indicate x,y,theta
+        return and list of 3 floating point values that indicate x,y,theta
         """
         return self.pose
     
     def getVelocity(self):
         """
-        return array of 3 values corresponding to the derivative of the pose
+        return list of 3 values corresponding to the derivative of the pose
         """
         return self.velocity
     
     def setPosition(self, pose):
         """
-        takes array of 3 values and set the corresponding internal representation 
+        takes list of 3 values and set the corresponding internal representation 
         if attempt to exceed constraint, will be clamped at the limit closest 
         to desired 
         """
-        for i in range(2): #check if x, y value is out or constrained range
+        #check if x, y value is out or constrained range, set to closest 
+        for i in range(2): 
             if pose[i] < 0:
-                pose[i] = 0
+                pose[i] = 0 
             elif pose[i] > 100:
                 pose[i] = 100
+        #check that orientation is within constriant 
+        if pose[2] < -math.pi:
+            pose[2] = pose[2]%(2*math.pi)
+        elif pose[2] > math.pi:
+            pose[2] = pose[2]%(2*math.pi) - 2*math.pi 
         self.pose = pose #update stored value 
+
         
     def setVelocity(self, velocity):
         """
@@ -91,13 +115,18 @@ class GroundVehicle(object):
         y_dot = velocity[1]
         #check constraint 
         if math.sqrt(x_dot**2 + y_dot**2) < 5:
-            ang = math.atan2(y_dot, x_dot) #retain the angle and adjust speed (magnitude)
+            #retain the angle and adjust speed (magnitude)
+            ang = math.atan2(y_dot, x_dot) 
             velocity[0] = 5*math.cos(ang)
             velocity[1] = 5*math.sin(ang)
         elif math.sqrt(x_dot**2 + y_dot**2) > 10:
             ang = math.atan2(y_dot, x_dot) 
-            velocity[0] = 5*math.cos(ang)
-            velocity[1] = 5*math.sin(ang)
+            velocity[0] = 10*math.cos(ang)
+            velocity[1] = 10*math.sin(ang)
+        if velocity[2] > math.pi/4:
+            velocity[2] = math.pi/4
+        elif velocity[2] < -math.pi/4:
+            velocity[2] = -math.pi/4
         self.velocity = velocity 
     
     def controlVehicle(self, c):
@@ -108,8 +137,6 @@ class GroundVehicle(object):
         orien = self.pose[-1] #get current vehicle orientation 
         speed = c.getSpeed()
         rotSpeed = c.getRotVel()
-#        print("speed: ",speed)
-#        print("rot vel: ",rotSpeed)
         x_dot = speed*math.cos(orien) #calculate the velocity from speed 
         y_dot = speed*math.sin(orien)
         self.setVelocity([x_dot, y_dot, rotSpeed])
@@ -119,7 +146,11 @@ class GroundVehicle(object):
         changes the vehicles state by computing the change that will occur in time t
         t is given in sec and msec
         """
+       
         time = sec + msec/1000
+        #check preconditions
+        if time < 0: 
+            raise ValueError('cannot have negative time')
         veloc = self.getVelocity()
         posit = self.getPosition()
         #update position 
@@ -145,7 +176,7 @@ class Simulator(object):
         self.clockSec = 0
         self.clockMSec = 0
         #Construc a Ground vehicle 
-        self.vehicle = GroundVehicle([0,0,0],0,0)
+        self.vehicle = GroundVehicle([0,0,0],5,0)
         #trajectory polygon sides. Default is 5 
         self.polygonSides = 5
     
@@ -171,37 +202,33 @@ class Simulator(object):
         Robot will go to (50,0) first before starting to trace the polygon 
         """
         incTime = 10
+        turnSpeed = 5.0
+        cruiseSpeed = 10.0 
         n = self.polygonSides
         radius = 25 #radius of the circle circumscribing the polygon 
         #define how to turn corner: partition to two parts, first turn half
         #the totally needed turn angle, then turn the other half
-        totalTime = int(2000/n)*n*10 #in milisecs 
-        timePerSide = int(2000/n)*10 #in milisecs; want each interval to be 10
         #use law of cosines to get side length 
         extAng = math.radians(360/n) #polygon external angle (turn angle) in radians 
         sidelength = radius*math.sqrt(2 - 2*math.cos(extAng))
-        cruise_speed = sidelength/(timePerSide/1000) #speed when on straigh line (m/s)
-        turn_speed = cruise_speed*math.cos(extAng/2)/math.cos((extAng/6)) #speed on the turn segs
-        #implement a four segment, three point turn 
-        #first segment, still on start part but angling for next segment 
+        turn_seg = turnSpeed*incTime/1000 #turn with small little segments 
+        turnTime = (int(extAng/(math.pi/4))+1)*1000 #in mS
+        turnAng = extAng/(turnTime/10) #turn by turning a small amount each time
+        turnRotVel = turnAng/(0.01) #update turning rotation 
+        turnRadius = turn_seg/math.tan(turnAng/2)/2 #the radius of turn 
+        cruiseLen = sidelength - 2*turnRadius*math.tan(extAng/2)
+
+        cruiseTime = (int(cruiseLen/cruiseSpeed)+1)*1000 #want this to be multiple of 10 (in mS)
+        cruiseSpeed = cruiseLen/cruiseTime*1000 #update the cruise speed 
+        timePerSide = cruiseTime + turnTime
         control = None 
-        if sec < 10: #give vehicle 10 secs to get to (50,0)
-            if sec == 0 and msec == 0:
-                control = Control(5,0) #just getting to (50,0)
-        elif (sec*1000+msec) > totalTime + 10*1000: 
-            control = None #only want to trace polygon once 
-        else: 
-            if ((sec-10)*1000+msec) == totalTime + 10*1000: 
-                #stop when the polygon has been traced out by vehicle 
-                control = Control(0,0)
-            elif ((sec-10)*1000+msec) % timePerSide == timePerSide - 2*incTime:
-                control = Control(cruise_speed, extAng/3/(incTime/1000))
-            #second and third segment at turn speed angling for next turn 
-            elif ((sec-10)*1000+msec) % timePerSide == timePerSide - incTime:
-                control = Control(turn_speed, extAng/3/(incTime/1000))
-            #fourth segment back to straight part 
-            elif ((sec-10)*1000+msec) % timePerSide == incTime:
-                control = Control(cruise_speed, 0)
+        if sec > 10: #wait for vehicle to get to middle  
+            if ((sec-10)*1000 + msec) % timePerSide == 0:
+                control = Control(turnSpeed, turnRotVel)
+                #turning 
+            elif ((sec-10)*1000 + msec) % timePerSide == turnTime:
+                control = Control(cruiseSpeed, 0)
+                #back to going straight
 
         return control 
     
@@ -236,9 +263,11 @@ class Simulator(object):
             if self.clockMSec >= 1000:
                 self.clockMSec = self.clockMSec%1000
                 self.clockSec += 1
-            
-s = Simulator()
-s.run()
+
+if __name__ == '__main__':
+    s = Simulator()
+    s.setNumSides(8)
+    s.run()
             
     
         
