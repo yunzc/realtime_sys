@@ -68,8 +68,6 @@ class GroundVehicle(object):
         x_dot = math.cos(pose[-1])*s #speed times the cosine of angle 
         y_dot = math.sin(pose[-1])*s
         self.velocity = [x_dot, y_dot, omega]
-        self.s = s
-        self.omega = omega
     
     def getPosition(self):
         """
@@ -157,8 +155,7 @@ class GroundVehicle(object):
         newpose = []
         for i in range(3):
             newpose.append(posit[i] + veloc[i]*time)
-        newpose[-1] = newpose[-1] % (2*math.pi)
-        #update velocity 
+        #update velocity
         newveloc = []
         speed = math.sqrt(veloc[0]**2 + veloc[1]**2)
         thet = newpose[-1]
@@ -176,7 +173,7 @@ class Simulator(object):
         self.clockSec = 0
         self.clockMSec = 0
         #Construc a Ground vehicle 
-        self.vehicle = GroundVehicle([0,0,0],5,0)
+        self.vehicle = GroundVehicle([50,50,0],5,0)
         #trajectory polygon sides. Default is 5 
         self.polygonSides = 5
     
@@ -201,6 +198,9 @@ class Simulator(object):
         Each time the angle to be turned is 360/n
         Robot will go to (50,0) first before starting to trace the polygon 
         """
+        #check that the input time is valid 
+        if (sec + msec/1000) < 0: 
+            raise ValueError('unclear what negative time means')
         incTime = 10
         turnSpeed = 5.0
         cruiseSpeed = 10.0 
@@ -221,15 +221,19 @@ class Simulator(object):
         cruiseTime = (int(cruiseLen/cruiseSpeed)+1)*1000 #want this to be multiple of 10 (in mS)
         cruiseSpeed = cruiseLen/cruiseTime*1000 #update the cruise speed 
         timePerSide = cruiseTime + turnTime
-        control = None 
-        if sec > 10: #wait for vehicle to get to middle  
-            if ((sec-10)*1000 + msec) % timePerSide == 0:
-                control = Control(turnSpeed, turnRotVel)
-                #turning 
-            elif ((sec-10)*1000 + msec) % timePerSide == turnTime:
-                control = Control(cruiseSpeed, 0)
-                #back to going straight
 
+        #if these quantities are not positive, something is seriously wrong 
+        assert turnTime > 0
+        assert cruiseTime > 0
+        assert cruiseLen > 0 
+        ######
+        control = None 
+        if ((sec)*1000 + msec) % timePerSide == 0:
+            #at these times vehicle turning 
+            control = Control(turnSpeed, turnRotVel) 
+        elif ((sec)*1000 + msec) % timePerSide == turnTime:
+            control = Control(cruiseSpeed, 0)
+            #back to going straight
         return control 
     
     def setNumSides(self, n):
@@ -239,13 +243,15 @@ class Simulator(object):
         if n >=3 and n <= 10:
             self.polygonSides = n
     
-    def run(self):
+    def run(self, writeToFile = True):
         """
         set clock to zero, while total time is less than 100 secs, get control, 
         apply control, update state, print current time, position, and orientation 
         then increment clock by 10 millisecs 
+        has the option of writing the data to a file in order to plot in Matlab 
         """
-        f = open('data.txt','w')
+        if writeToFile: 
+            f = open('data.txt','w')
         incTime = 10
         self.clockSec = 0
         self.clockMSec = 0
@@ -253,21 +259,24 @@ class Simulator(object):
             control = self.getControl(self.clockSec, self.clockMSec) #get control 
             if control != None: 
                 self.vehicle.controlVehicle(control) #apply control 
-            self.vehicle.updateState(0, 10)
-            time = round(self.clockSec + self.clockMSec/1000,2)
+            self.vehicle.updateState(0, 10) #increment by 10 milliseconds 
+            time = round(self.clockSec + self.clockMSec/1000, 2)
             pose = self.vehicle.getPosition()
             print(time," ",round(pose[0],2)," ",round(pose[1],2)," ",round(pose[2],1))
-            f.write(str(time)+" "+str(round(pose[0],2))+" "+str(round(pose[1],2))+" "+str(round(pose[2],1))+"\n")
+            if writeToFile: 
+                f.write(str(time)+" "+str(round(pose[0],2))+" "+str(round(pose[1],2))+" "+str(round(pose[2],1))+"\n")
             self.clockMSec += incTime
             #increment time 
             if self.clockMSec >= 1000:
                 self.clockMSec = self.clockMSec%1000
                 self.clockSec += 1
+    
+    def main(self):
+        s = Simulator()
+        s.run()
 
 if __name__ == '__main__':
-    s = Simulator()
-    s.setNumSides(8)
-    s.run()
+    Simulator().main()
             
     
         
